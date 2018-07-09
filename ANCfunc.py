@@ -27,16 +27,22 @@ def corr_coef(a,b):
 def correlationFunc(U,V):
 # 需要归一化再求互相关！
     Uorigin, Vorigin = U, V
+
     U, V = U.astype(np.float64), V.astype(np.float64)
     U_max = np.max(np.abs(U))
     V_max = np.max(np.abs(V))
     mmax = np.max([U_max,V_max])
     U /= mmax
     V /= mmax
-    csame = np.correlate(U, V, "same")
+    # only use 3 seconds to correlate
+    U3 = U[24000:96000]
+    V3 = V[24000:96000]
+    # U3 = U[74000:96000]
+    # V3 = V[74000:96000]
+    csame = np.correlate(U3, V3, "same")
     ref = np.argmax(csame)+1
-    print("The reference of max is ",ref)
-    half_len = len(U) // 2
+    print("The reference of max is ", ref)
+    half_len = len(U3) // 2
     print("The half length is  ", half_len)
 
     d = abs(ref - half_len)
@@ -68,6 +74,7 @@ def ANC_filter(U, V):
     music = e.astype(np.int16)
     #music = music[44100:]
     mmax = np.max(music)
+    print(mmax)
     music = music * 32768 // mmax
     music = music.astype(np.int16)
     print("the length of filter result is ",len(music))
@@ -103,7 +110,7 @@ def pre_combine(signal,noise, u1,u2,v1,v2,num=0, uSignalFlag=0,uNoiseFlag=0,vSig
     Uout, Vout = U.astype(np.int16), V.astype(np.int16)
     print("the combine result: coefficients",u1,u2,v1,v2)
     return Uout, Vout
-def mergeChannel(u,v,rate):
+def mergeChannel(u,v,rate,str="ex10merge.wav"):
     left = u
     right = v
     # m = np.array([left, right])
@@ -112,7 +119,7 @@ def mergeChannel(u,v,rate):
     m = list(zip(left,right))
     m = np.array(m)
     print(type(m))
-    wavfile.write('ex10merge.wav', rate, m)
+    wavfile.write("./output/"+str, rate, m)
     return m.dtype
 def splitChannel(srcMusicFile,str):
     #read
@@ -124,15 +131,35 @@ def splitChannel(srcMusicFile,str):
         left.append(item[0])
         right.append(item[1])
     splitu, splitv = np.array(left), np.array(right)
-    key = 32768/np.max(splitu)
-    splitu = splitu*key
-    splitv = splitv*key
-    splitu, splitv = splitu.astype(np.int16), splitv.astype(np.int16)
-    wavfile.write(str+'splitU.wav', sampleRate, splitu)
-    wavfile.write(str+'splitV.wav', sampleRate, splitv)
-    return splitu, splitv, sampleRate
+    # max_value = max(np.max(splitu), np.max(splitv))
+    # splitu, splitv = splitu / np.max(splitu)*max_value, splitv / np.max(splitv)*max_value
 
-def plotfft(wave_data,framerate,title,maxY = 20000):
+    # key = 32768/np.max(splitu)
+    # splitu = splitu*key
+    # splitv = splitv*key
+    splitu, splitv = splitu.astype(np.int16), splitv.astype(np.int16)
+    wavfile.write("./output/"+str+'splitU.wav', sampleRate, splitu)
+    wavfile.write("./output/"+str+'splitV.wav', sampleRate, splitv)
+    return splitu, -splitv, sampleRate
+def changeAmplitude(u,v):
+    max_value = max(np.max(u), np.max(v))
+    ukey, vkey = max_value/np.max(u), max_value/np.max(v)*1.1
+    au, av = u * ukey, v * vkey
+    au, av = au.astype(np.int16), av.astype(np.int16)
+    key = 0
+    str = "nothing"
+    if ukey >1:
+        key = ukey
+        str = "amplify U"
+        print(str)
+    elif vkey >1:
+        key = vkey
+        str = "amplify V"
+        print(str)
+    print(key)
+    return au,av,key
+
+def plotfft(wave_data,framerate,title,maxY = 10000):#maxY=20000
     N = 44100
     start = 0  # 开始采样位置
     df = framerate / (N - 1)  # 分辨率
@@ -142,13 +169,13 @@ def plotfft(wave_data,framerate,title,maxY = 20000):
     # 常规显示采样频率一半的频谱
     d = int(len(c) / 2)
     # 仅显示频率在4000以下的频谱
-    while freq[d] > 4000:
+    while freq[d] > 10000:
         d -= 10
 
     ax = subplot(111)
-    xmajorLocator = MultipleLocator(500)  # 将x主刻度标签设置为20的倍数
+    xmajorLocator = MultipleLocator(1000)  # 将x主刻度标签设置为20的倍数
     xmajorFormatter = FormatStrFormatter('%1.1f')  # 设置x轴标签文本的格式
-    xminorLocator = MultipleLocator(50)  # 将x轴次刻度标签设置为5的倍数
+    xminorLocator = MultipleLocator(100)  # 将x轴次刻度标签设置为5的倍数
     # 设置主刻度标签的位置,标签文本的格式
     ax.xaxis.set_major_locator(xmajorLocator)
     ax.xaxis.set_major_formatter(xmajorFormatter)
@@ -156,23 +183,20 @@ def plotfft(wave_data,framerate,title,maxY = 20000):
     ax.xaxis.set_minor_locator(xminorLocator)
     ax.xaxis.grid(True, which='major')  # x坐标轴的网格使用主刻度
 
-    ymajorLocator = MultipleLocator(5000)  # 将y轴主刻度标签设置为0.5的倍数
+    ymajorLocator = MultipleLocator(1000)  # 将y轴主刻度标签设置为0.5的倍数
     ymajorFormatter = FormatStrFormatter('%1.1f')  # 设置y轴标签文本的格式
-    yminorLocator = MultipleLocator(500)  # 将此y轴次刻度标签设置为0.1的倍数
+    yminorLocator = MultipleLocator(100)  # 将此y轴次刻度标签设置为0.1的倍数
     ax.yaxis.set_major_locator(ymajorLocator)
     ax.yaxis.set_major_formatter(ymajorFormatter)
     ax.yaxis.set_minor_locator(yminorLocator)
     ax.yaxis.grid(True, which='minor')  # y坐标轴的网格使用次刻度
 
-
-
-
     pylab.plot(freq[:d - 1], abs(c[:d - 1]), 'r')
-    pylab.axis([0,4000,0, maxY])
+    pylab.axis([0, 10000, 0, maxY])
     pylab.title(title)
     pylab.show()
 
-def plotfft2(wave_data,framerate,title,maxY = 30000):
+def plotfft2(wave_data,framerate,title,maxY = 1000):
     N = 44100
     start = 0  # 开始采样位置
     df = framerate / (N - 1)  # 分辨率
@@ -203,9 +227,6 @@ def plotfft2(wave_data,framerate,title,maxY = 30000):
     ax.yaxis.set_major_formatter(ymajorFormatter)
     ax.yaxis.set_minor_locator(yminorLocator)
     ax.yaxis.grid(True, which='minor')  # y坐标轴的网格使用次刻度
-
-
-
 
     pylab.plot(freq[:d - 1], abs(c[:d - 1]), 'r')
     pylab.axis([0,4000,0, maxY])

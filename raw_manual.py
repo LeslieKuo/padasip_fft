@@ -6,30 +6,36 @@ import numpy as np
 import padasip as pa
 import ANCfunc as anc
 
+name = "interval"
+#su, sv, orate = anc.splitChannel("F:/AllProgram/pycharmPros/padasip/single/interval8_16result.wav","raw_manual")
+su, sv, orate = anc.splitChannel("F:/AllProgram/pycharmPros/padasip/mix/Vol13.wav","interval_result")
+type1 = anc.mergeChannel(su,sv,orate,str="afterInverse.wav")
+alignnum = 68
+su = su[:-alignnum]
+sv = sv[alignnum:]
+# su, sv = anc.correlationFunc(su, sv)
 
-su, sv, orate = anc.splitChannel("F:/AllProgram/pycharmPros/padasip/single/interval8_16result.wav","raw_manual")
-# print(len(su))
-su = su[:-67]
-sv = sv[67:]
-wavfile.write('ex10suraw.wav', orate, su)
-wavfile.write('ex10svraw.wav', orate, sv)
 # print(len(su), len(sv))
-anc.plotfft(su, orate, ' u')
-anc.plotfft(sv, orate, ' v')
+anc.plotfft2(su, orate, ' u')
+anc.plotfft2(sv, orate, ' v')
 print("near noise data is ", su)
 print("near signal data is ", sv)
-type = anc.mergeChannel(su,sv,orate)
-# print(type)
-# result = sv - su*0.025/0.08
-#
-# result = sv - su*0.073/0.56
-result = sv - su*0.123/0.92*1.01
-result = anc.boundary(result)
-print(result.dtype)
-print(result)
+type = anc.mergeChannel(su,sv,orate,str="afterAlign"+str(alignnum)+".wav")
+
+su, sv , key = anc.changeAmplitude(su, sv)
+type2 = anc.mergeChannel(su,sv,orate,str="afterChangeAmplit"+str(alignnum)+".wav")
+# result = sv + su*0.08/0.45*1.01
+result = sv - su
+result = result/key
 result = result.astype(np.int16)
-print(result.dtype)
+# result = anc.boundary(result)
+# print(result.dtype)
+
+
+
+
 # _max = np.max(np.abs(result))
 # result /= _max
-wavfile.write('ex10raw.wav', orate, result)
-anc.plotfft(result, orate, 'result')
+wavfile.write("./output/"+name+str(alignnum)+'_result.wav', orate, result)
+anc.plotfft2(result, orate, str(alignnum)+'result')
+anc.plotfft(result, orate, str(alignnum)+'result')
