@@ -7,6 +7,7 @@ import pyaudio
 import pylab
 from pylab import *
 from matplotlib.ticker import MultipleLocator, FormatStrFormatter
+from scipy import interpolate
 
 def boundary(array):
     for i in array:
@@ -72,11 +73,10 @@ def ANC_filter(U, V):
     f = pa.filters.FilterRLS(mu=0.99, n=n)
     y, e, w = f.run(Vdelay, Udelay)
     music = e.astype(np.int16)
-    #music = music[44100:]
-    mmax = np.max(music)
-    print(mmax)
-    music = music * 32768 // mmax
-    music = music.astype(np.int16)
+    # mmax = np.max(music)
+    # print(mmax)
+    # music = music * 32768 // mmax
+    # music = music.astype(np.int16)
     print("the length of filter result is ",len(music))
     return music
 
@@ -115,10 +115,10 @@ def mergeChannel(u,v,rate,str="ex10merge.wav"):
     right = v
     # m = np.array([left, right])
     # m = m.astype(np.float64)
-    print(type(left))
+    # print(type(left))
     m = list(zip(left,right))
     m = np.array(m)
-    print(type(m))
+    # print(type(m))
     wavfile.write("./output/"+str, rate, m)
     return m.dtype
 def splitChannel(srcMusicFile,str):
@@ -131,19 +131,14 @@ def splitChannel(srcMusicFile,str):
         left.append(item[0])
         right.append(item[1])
     splitu, splitv = np.array(left), np.array(right)
-    # max_value = max(np.max(splitu), np.max(splitv))
-    # splitu, splitv = splitu / np.max(splitu)*max_value, splitv / np.max(splitv)*max_value
-
-    # key = 32768/np.max(splitu)
-    # splitu = splitu*key
-    # splitv = splitv*key
     splitu, splitv = splitu.astype(np.int16), splitv.astype(np.int16)
-    wavfile.write("./output/"+str+'splitU.wav', sampleRate, splitu)
-    wavfile.write("./output/"+str+'splitV.wav', sampleRate, splitv)
     return splitu, -splitv, sampleRate
+    # return splitu, splitv, sampleRate
 def changeAmplitude(u,v):
-    max_value = max(np.max(u), np.max(v))
-    ukey, vkey = max_value/np.max(u), max_value/np.max(v)*1.1
+    # max_value = max(np.max(u), np.max(v))
+    # ukey, vkey = max_value/np.max(u), max_value/np.max(v)*1.1
+    max_value = max(np.average(np.abs(u)),np.average(np.abs(v)))
+    ukey, vkey = max_value / np.average(np.abs(u)), max_value / np.average(np.abs(v))
     au, av = u * ukey, v * vkey
     au, av = au.astype(np.int16), av.astype(np.int16)
     key = 0
@@ -156,7 +151,7 @@ def changeAmplitude(u,v):
         key = vkey
         str = "amplify V"
         print(str)
-    print(key)
+    print("changeAmlitude key is ",key)
     return au,av,key
 
 def plotfft(wave_data,framerate,title,maxY = 10000):#maxY=20000
@@ -232,3 +227,76 @@ def plotfft2(wave_data,framerate,title,maxY = 1000):
     pylab.axis([0,4000,0, maxY])
     pylab.title(title)
     pylab.show()
+
+def find_min_positition(su, sv):
+    min_result = (0, math.inf)
+    for align in range(1, 100):
+        su_ = su[:-align]
+        sv_ = sv[align:]
+        value_ave = np.average(np.abs(su_-sv_))
+        # value_max = np.max(np.abs(su_-sv_))
+        # value = min(value_ave,value_max)
+        if value_ave <min_result[1]:
+            min_result = (align, value_ave)
+
+    # #以下是肉眼
+    # su_ = su[:-72]
+    # sv_ = sv[72:]
+    # value_ave = np.average(np.abs(su_ - sv_))
+    # min_result = (72, value_ave)
+    return min_result
+
+def phase_shift(signal,phase):
+    assert 0 <= phase <= 1
+    x = np.arange(0, len(signal))
+    y = np.array(signal)
+    f = interpolate.interp1d(x, y)
+    xnew = np.arange(phase, len(signal)-1, 1)
+    # xnew = np.arange(0, len(signal) - 1, phase)
+    ynew = f(xnew)
+    return ynew
+#
+# 插值一次，记录八个list ，sulist  svlist 分别用find min dist 做八次筛选
+# def find_accurate_min_dist(su,sv, positition,phase):
+#     accurate_result = (0, math.inf)
+#     assert 1 <= positition <= 100
+#     assert 0 <= phase <= 1
+#     for accurate_num in range(-1,1,phase):
+#         su_ = su[:-positition-accurate_num]
+#         sv_ = sv[positition+accurate_num:]
+#         value = np.average(np.abs(su_-sv_))
+#         if value < accurate_result[1]:
+#             accurate_result = (positition+accurate_num, value)
+#     return accurate_result
+
+def interpolate_value(signal,phase):
+    assert 0 <= phase <= 1
+    x = np.arange(0, len(signal))
+    y = np.array(signal)
+    f = interpolate.interp1d(x, y)
+    xnew = np.arange(0, len(signal) - 1, phase)
+    ynew = f(xnew)
+    ylist =[]
+    ylist.append(ynew[::8])
+    ylist.append(ynew[1::8])
+    ylist.append(ynew[2::8])
+    ylist.append(ynew[3::8])
+    ylist.append(ynew[4::8])
+    ylist.append(ynew[5::8])
+    ylist.append(ynew[6::8])
+    ylist.append(ynew[7::8])
+    # print(type(ylist[0]))
+    return ylist
+
+def align_ref(ref_align_num,su,sv):
+    assert 20 <= ref_align_num
+    min_result = (ref_align_num, math.inf)
+    for delta in range(-20, 20):
+        su_ = su[:-ref_align_num-delta]
+        sv_ = sv[ref_align_num+delta:]
+        value_ave = np.average(np.abs(su_-sv_))
+        # value_max = np.max(np.abs(su_-sv_))
+        # value = min(value_ave,value_max)
+        if value_ave <min_result[1]:
+            min_result = (ref_align_num+delta, value_ave)
+    return min_result
